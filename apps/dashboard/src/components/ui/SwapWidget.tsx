@@ -1,19 +1,19 @@
 import { useEffect, useRef } from 'react';
+  import { AERN_MINT, SOL_MINT, USDC_MINT } from '../../constants';
 
   interface SwapWidgetProps {
     defaultInputMint?: string;
     defaultOutputMint?: string;
   }
 
-  const AERN_MINT  = 'AERNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // placeholder pre-TGE
-  const SOL_MINT   = 'So11111111111111111111111111111111111111112';
-  const USDC_MINT  = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-
   declare global {
     interface Window { Jupiter: { init: (config: object) => void } }
   }
 
-  export function SwapWidget({ defaultInputMint = SOL_MINT, defaultOutputMint = AERN_MINT }: SwapWidgetProps) {
+  export function SwapWidget({
+    defaultInputMint  = SOL_MINT.toBase58(),
+    defaultOutputMint = AERN_MINT.toBase58(),
+  }: SwapWidgetProps) {
     const ref = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -28,7 +28,7 @@ import { useEffect, useRef } from 'react';
           endpoint: 'https://mainnet.helius-rpc.com/?api-key=public',
           defaultExplorer: 'Solana Explorer',
           formProps: {
-            initialInputMint: defaultInputMint,
+            initialInputMint:  defaultInputMint,
             initialOutputMint: defaultOutputMint,
             fixedOutputMint: true,
           },
@@ -41,11 +41,7 @@ import { useEffect, useRef } from 'react';
 
     return (
       <div className="rounded-xl border border-white/10 bg-[#0d0d14] overflow-hidden">
-        <div
-          id="jupiter-terminal"
-          ref={ref}
-          className="w-full min-h-[520px]"
-        />
+        <div id="jupiter-terminal" ref={ref} className="w-full min-h-[520px]" />
       </div>
     );
   }
