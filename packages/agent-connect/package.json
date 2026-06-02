@@ -1,0 +1,30 @@
+{
+  "name": "@aeeron/agent-connect",
+  "version": "0.1.0",
+  "description": "Agent connection layer — register, discover, and pay Aeeron-enabled agents over x402",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aeeron/sdk": "workspace:*",
+    "@aeeron/protocol": "workspace:*",
+    "@solana/web3.js": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "tsup": "catalog:"
+  }
+}
