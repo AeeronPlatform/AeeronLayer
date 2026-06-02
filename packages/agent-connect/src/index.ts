@@ -2,6 +2,7 @@ export { AgentConnection }         from './AgentConnection';
   export { AgentChannelConnection }  from './AgentChannelConnection';
   export { AgentPool }               from './AgentPool';
   export { AgentRegistry, globalRegistry } from './registry';
+  export { AgentSessionManager, globalSessionManager } from './session';
   export { createAgentFetch }        from './adapters/fetch';
   export { toMcpTools, createMcpHandler } from './mcp';
   export type {
@@ -14,4 +15,5 @@ export { AgentConnection }         from './AgentConnection';
     RegistrySearchParams,
   } from './types';
   export type { McpTool, McpCallResult } from './mcp';
+  export type { AgentSession, SessionStatus } from './session';
   
