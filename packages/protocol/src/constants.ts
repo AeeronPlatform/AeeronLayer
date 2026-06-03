@@ -1,61 +1,57 @@
-import { PublicKey } from '@solana/web3.js';
+/**
+   * Aeeron Protocol — on-chain constants
+   *
+   * These values are canonical and must stay in sync with the deployed
+   * Solana programs. Do NOT hardcode them in application code; import from here.
+   */
 
-  // ─── Program ──────────────────────────────────────────────────────────────────
+  // ─── $AEERON Token ────────────────────────────────────────────────────────────
 
-  export const AEERON_PROGRAM_ID = new PublicKey(
-    'AERNprot1111111111111111111111111111111111111',
-  );
+  /** SPL mint address of the $AEERON utility token (pump.fun). */
+  export const AEERON_MINT = 'DLnWxjvV9rYFgyScBGH7eFtsQqDtyeDsaQTxynnRpump' as const;
 
-  // ─── AERN Token ───────────────────────────────────────────────────────────────
+  /** Human-readable token ticker. */
+  export const AEERON_SYMBOL = '$AEERON' as const;
 
-  /** SPL Token-2022 mint. Deployed Jun 1 2026. Freeze + mint authority revoked. */
-  export const AERN_MINT = new PublicKey(
-    'AERNyKLBWMiMpLbZ3gJB7aECsTHEfn2Q8v1D5rXkm9j',
-  );
+  /** Decimals as defined in the mint account. */
+  export const AEERON_DECIMALS = 6;
 
-  export const AERN_DECIMALS = 9;
-  export const AERN_SYMBOL   = 'AERN';
-  export const AERN_NAME     = 'Aeeron';
-
-  // ─── Payment assets ───────────────────────────────────────────────────────────
-
-  export const SOL_MINT = new PublicKey(
-    'So11111111111111111111111111111111111111112',
-  );
-
-  export const USDC_MINT = new PublicKey(
-    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  );
-
-  export const SUPPORTED_MINTS = [SOL_MINT, USDC_MINT, AERN_MINT] as const;
-
-  // ─── Explorer links ───────────────────────────────────────────────────────────
-
-  export const EXPLORER_BASE  = 'https://explorer.solana.com';
-  export const BIRDEYE_BASE   = 'https://birdeye.so/token';
-  export const DEXSCREENER_BASE = 'https://dexscreener.com/solana';
-
-  export function explorerTx(sig: string, cluster = 'mainnet-beta') {
-    return `${EXPLORER_BASE}/tx/${sig}?cluster=${cluster}`;
-  }
-  export function explorerAddress(addr: string, cluster = 'mainnet-beta') {
-    return `${EXPLORER_BASE}/address/${addr}?cluster=${cluster}`;
-  }
-  export function birdeyeToken(mint = AERN_MINT.toBase58()) {
-    return `${BIRDEYE_BASE}/${mint}?chain=solana`;
-  }
-  export function dexscreenerPair(mint = AERN_MINT.toBase58()) {
-    return `${DEXSCREENER_BASE}/${mint}`;
+  /**
+   * Convert a raw on-chain amount (u64, no decimals) to a display string.
+   *
+   *   aeeronRawToDisplay(1_000_000n) // "1.000000"
+   */
+  export function aeeronRawToDisplay(raw: bigint): string {
+    const factor = BigInt(10 ** AEERON_DECIMALS);
+    const whole  = raw / factor;
+    const frac   = raw % factor;
+    return `${whole}.${frac.toString().padStart(AEERON_DECIMALS, '0')}`;
   }
 
-  // ─── x402 headers ────────────────────────────────────────────────────────────
+  /**
+   * Convert a display amount string to raw lamport-equivalent units.
+   *
+   *   aeeronDisplayToRaw('1.5') // 1_500_000n
+   */
+  export function aeeronDisplayToRaw(display: string): bigint {
+    const [w = '0', f = ''] = display.split('.');
+    const frac = f.padEnd(AEERON_DECIMALS, '0').slice(0, AEERON_DECIMALS);
+    return BigInt(w) * BigInt(10 ** AEERON_DECIMALS) + BigInt(frac);
+  }
 
-  export const X402_PAYMENT_DETAILS_HEADER = 'X-Payment-Details';
-  export const X402_PAYMENT_PROOF_HEADER   = 'X-Payment-Proof';
+  // ─── x402 Payment defaults ───────────────────────────────────────────────────
 
-  // ─── Defaults ─────────────────────────────────────────────────────────────────
+  /** Default max price per agent call in SOL lamports (0.01 SOL). */
+  export const DEFAULT_MAX_PRICE_LAMPORTS = 10_000_000n;
 
-  export const DEFAULT_PROOF_TTL_MS        = 30_000;
-  export const DEFAULT_CHANNEL_EXPIRY_SEC  = 7 * 24 * 60 * 60; // 7 days
-  export const MAX_PAYMENT_RETRY           = 3;
+  /** Minimum viable payment for a single x402 request (100 lamports). */
+  export const MIN_PAYMENT_LAMPORTS = 100n;
+
+  /** x402 protocol version this SDK targets. */
+  export const X402_PROTOCOL_VERSION = '1' as const;
+
+  // ─── Network ──────────────────────────────────────────────────────────────────
+
+  export const SOLANA_MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+  export const SOLANA_DEVNET_RPC  = 'https://api.devnet.solana.com';
   
