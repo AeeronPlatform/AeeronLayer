@@ -1,0 +1,25 @@
+{
+  "name": "@aeeron/cli",
+  "version": "0.4.0",
+  "description": "Aeeron CLI — manage agents, simulate fees, inspect sessions",
+  "bin": {
+    "aeeron": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aeeron/protocol": "workspace:*",
+    "@aeeron/agent-connect": "workspace:*",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "esbuild": "catalog:",
+    "typescript": "catalog:"
+  }
+}
