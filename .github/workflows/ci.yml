@@ -2,132 +2,99 @@ name: CI
 
   on:
     push:
-      branches: [main, develop]
+      branches: [main]
     pull_request:
       branches: [main]
 
   concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
+    group: ci-${{ github.ref }}
     cancel-in-progress: true
 
   jobs:
-    lint-and-typecheck:
-      name: Lint & Typecheck
+    typecheck:
+      name: Typecheck
       runs-on: ubuntu-latest
       steps:
         - uses: actions/checkout@v4
-
         - uses: pnpm/action-setup@v4
           with:
             version: 9
-
         - uses: actions/setup-node@v4
           with:
-            node-version: 20
+            node-version: 24
             cache: pnpm
+        - run: pnpm install --frozen-lockfile
+        - run: pnpm run typecheck
 
-        - name: Install dependencies
-          run: pnpm install --no-frozen-lockfile
+    test-protocol:
+      name: Protocol unit tests
+      runs-on: ubuntu-latest
+      needs: typecheck
+      steps:
+        - uses: actions/checkout@v4
+        - uses: pnpm/action-setup@v4
+          with: { version: 9 }
+        - uses: actions/setup-node@v4
+          with: { node-version: 24, cache: pnpm }
+        - run: pnpm install --frozen-lockfile
+        - run: pnpm --filter @aeeron/protocol run test
 
-        - name: Typecheck
-          run: pnpm typecheck
-          continue-on-error: true
+    test-anchor:
+      name: Anchor program tests
+      runs-on: ubuntu-latest
+      needs: typecheck
+      env:
+        ANCHOR_WALLET: ~/.config/solana/id.json
+        ANCHOR_PROVIDER_URL: http://127.0.0.1:8899
+      steps:
+        - uses: actions/checkout@v4
+        - name: Install Solana CLI
+          run: |
+            sh -c "$(curl -sSfL https://release.solana.com/v1.18.26/install)"
+            echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+        - name: Install Anchor CLI
+          run: |
+            npm install -g @coral-xyz/anchor-cli@0.30.1
+        - uses: pnpm/action-setup@v4
+          with: { version: 9 }
+        - uses: actions/setup-node@v4
+          with: { node-version: 24, cache: pnpm }
+        - run: pnpm install --frozen-lockfile
+        - name: Generate keypair
+          run: solana-keygen new --no-bip39-passphrase -o ~/.config/solana/id.json
+        - name: Start localnet and run tests
+          run: |
+            solana-test-validator --reset --quiet &
+            sleep 5
+            anchor test --skip-local-validator --provider.cluster localnet
+          working-directory: programs/aeeron-verifier
 
-        - name: Lint
-          run: pnpm lint
-          continue-on-error: true
-
-    test-sdk:
-      name: SDK Tests
+    lint:
+      name: Lint
       runs-on: ubuntu-latest
       steps:
         - uses: actions/checkout@v4
-
         - uses: pnpm/action-setup@v4
-          with:
-            version: 9
-
+          with: { version: 9 }
         - uses: actions/setup-node@v4
-          with:
-            node-version: 20
-            cache: pnpm
+          with: { node-version: 24, cache: pnpm }
+        - run: pnpm install --frozen-lockfile
+        - run: pnpm run lint --if-present
 
-        - name: Install dependencies
-          run: pnpm install --no-frozen-lockfile
-
-        - name: Run SDK tests
-          run: pnpm --filter @aeeron/sdk test
-          continue-on-error: true
-
-    test-api:
-      name: API Tests
+    build-api:
+      name: Build API
       runs-on: ubuntu-latest
+      needs: [typecheck, test-protocol]
       steps:
         - uses: actions/checkout@v4
-
         - uses: pnpm/action-setup@v4
-          with:
-            version: 9
-
+          with: { version: 9 }
         - uses: actions/setup-node@v4
-          with:
-            node-version: 20
-            cache: pnpm
-
-        - name: Install dependencies
-          run: pnpm install --no-frozen-lockfile
-
-        - name: Run API tests
-          run: pnpm --filter @aeeron/api test
-          continue-on-error: true
+          with: { node-version: 24, cache: pnpm }
+        - run: pnpm install --frozen-lockfile
+        - run: pnpm --filter @workspace/api-server run build
           env:
-            NODE_ENV: test
-            SOLANA_NETWORK: devnet
-            SKIP_VERIFICATION: "true"
-
-    build-program:
-      name: Build Solana Program
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v4
-
-        - name: Install Rust
-          uses: dtolnay/rust-toolchain@stable
-
-        - name: Cache Rust dependencies
-          uses: actions/cache@v4
-          with:
-            path: |
-              ~/.cargo/registry
-              ~/.cargo/git
-              target
-            key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-        - name: Check program compiles
-          working-directory: programs/aeeron-protocol
-          run: cargo check
-          continue-on-error: true
-
-    build-packages:
-      name: Build TypeScript packages
-      runs-on: ubuntu-latest
-      needs: [lint-and-typecheck]
-      steps:
-        - uses: actions/checkout@v4
-
-        - uses: pnpm/action-setup@v4
-          with:
-            version: 9
-
-        - uses: actions/setup-node@v4
-          with:
-            node-version: 20
-            cache: pnpm
-
-        - name: Install dependencies
-          run: pnpm install --no-frozen-lockfile
-
-        - name: Build
-          run: pnpm build
-          continue-on-error: true
+            NODE_ENV: production
+            PORT: 5000
+            BASE_PATH: /api
   
