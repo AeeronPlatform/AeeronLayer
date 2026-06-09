@@ -1,186 +1,137 @@
-import {
-    AgentConnection,
-    AgentChannelConnection,
-    AgentPool,
-    AgentSessionManager,
-    AgentRegistry,
-    globalRegistry,
-    type AgentDescriptor,
-    type AgentConnectionOptions,
-    type AgentCallResult,
-    type AgentSession,
-  } from '@aeeron/agent-connect';
-  import {
-    verifyPaymentProof,
-    simulateComparison,
-    AEERON_MINT,
-    AEERON_SYMBOL,
-    type PaymentProof,
-    type SimulateComparisonResult,
-  } from '@aeeron/protocol';
+import { IntentBuilder }  from './IntentBuilder';
+  import type { Intent }      from '@aeeron/protocol';
 
   export interface AeeronClientOptions {
-    /** Payer keypair (base58 secret key). Required for initiating payments. */
-    payerKeypair: Uint8Array;
-    /** Solana RPC endpoint (default: mainnet-beta). */
-    rpcEndpoint?: string;
-    /** Max price per agent call in lamports (default: 10_000_000). */
-    maxPriceLamports?: bigint;
-    /** Request timeout in ms (default: 30_000). */
-    timeoutMs?: number;
-    /** Gateway secret for proof verification (server-side only). */
-    gatewaySecret?: string;
+    /** Base URL of the Aeeron Gateway API, e.g. https://api.aeeron.xyz */
+    gatewayUrl:   string;
+    /** Session token for HMAC intent signing (keep server-side) */
+    sessionToken: string;
+    /** Agent wallet public key (base58) */
+    wallet:       string;
+    /** Agent ID registered on the Gateway */
+    agentId:      string;
   }
 
-  export interface CallOptions {
-    /** Override max price for this call only. */
-    maxPriceLamports?: bigint;
-    /** Attach to an existing session ID. */
-    sessionId?: string;
-    /** Force direct payment even if a pool exists. */
-    forceDirect?: boolean;
+  export interface PayResult {
+    ok:           true;
+    txSignature:  string;
+    slot:         number;
+  }
+
+  export interface PayError {
+    ok:    false;
+    error: string;
+    code:  string;
+  }
+
+  export interface StatusResult {
+    settled:      boolean;
+    intentId:     string;
+    txSignature?: string;
+    slot?:        number;
+    settledAt?:   number;
   }
 
   /**
    * AeeronClient
    *
-   * High-level entry point for the Aeeron x402 SDK.
-   * Manages agent discovery, connection pools, session tracking, and proof verification
-   * behind a single ergonomic API.
+   * Minimal TypeScript SDK for agent-to-agent x402 payments via the Aeeron Gateway.
    *
-   * Quick start:
+   * @example
+   * const client = new AeeronClient({
+   *   gatewayUrl:   'https://api.aeeron.xyz',
+   *   sessionToken: process.env.AEERON_SESSION_TOKEN!,
+   *   wallet:       myKeypair.publicKey.toBase58(),
+   *   agentId:      'agent_summarizer_v1',
+   * });
    *
-   *   import { AeeronClient } from '@aeeron/sdk';
-   *
-   *   const aeeron = new AeeronClient({ payerKeypair: keypair.secretKey });
-   *
-   *   const agent = await aeeron.discover('agent_summarizer_v1');
-   *   const result = await aeeron.call(agent, 'summarize', { text: '...' });
-   *   console.log(result.data);
-   *
-   *   await aeeron.destroy();
+   * const result = await client.pay({
+   *   recipient:   recipientPubkey,
+   *   capability:  'summarize',
+   *   maxLamports: 100_000n,
+   *   rail:        'sol',
+   * });
    */
   export class AeeronClient {
-    private opts:     Required<AeeronClientOptions>;
-    private pools:    Map<string, AgentPool>   = new Map();
-    private sessions: AgentSessionManager      = new AgentSessionManager();
-    readonly registry: AgentRegistry           = globalRegistry;
+    private opts: AeeronClientOptions;
 
-    constructor(options: AeeronClientOptions) {
-      this.opts = {
-        payerKeypair:     options.payerKeypair,
-        rpcEndpoint:      options.rpcEndpoint      ?? 'https://api.mainnet-beta.solana.com',
-        maxPriceLamports: options.maxPriceLamports  ?? 10_000_000n,
-        timeoutMs:        options.timeoutMs         ?? 30_000,
-        gatewaySecret:    options.gatewaySecret     ?? '',
+    constructor(opts: AeeronClientOptions) {
+      this.opts = opts;
+    }
+
+    /**
+     * pay
+     *
+     * Builds a signed intent and submits it to the Gateway for on-chain settlement.
+     * Returns txSignature + slot on success.
+     */
+    async pay(args: {
+      recipient:   string;
+      capability:  string;
+      payload?:    Record<string, unknown>;
+      maxLamports: bigint;
+      rail?:       'sol' | 'spl';
+      ttl?:        number;
+    }): Promise<PayResult | PayError> {
+      const intent = new IntentBuilder()
+        .payer(this.opts.wallet)
+        .recipient(args.recipient)
+        .agent(this.opts.agentId)
+        .capability(args.capability, args.payload ?? {})
+        .maxAmount(args.maxLamports)
+        .rail(args.rail ?? 'sol')
+        .ttl(args.ttl ?? 60_000)
+        .build(this.opts.sessionToken);
+
+      const res = await fetch(`${this.opts.gatewayUrl}/api/gateway/pay`, {
+        method:  'POST',
+        headers: {
+          'Content-Type':    'application/json',
+          'X-402-Payment':   JSON.stringify({ ...intent, maxAmountLamports: intent.maxAmountLamports.toString() }),
+        },
+        body: '{}',
+      });
+
+      const json = await res.json() as Record<string, unknown>;
+
+      if (res.ok) {
+        return { ok: true, txSignature: json['txSignature'] as string, slot: json['slot'] as number };
+      }
+      return { ok: false, error: json['error'] as string, code: json['code'] as string };
+    }
+
+    /**
+     * status
+     *
+     * Polls the Gateway for on-chain settlement status of a given intentId.
+     * Agents receiving payments use this to confirm finality before delivering service.
+     */
+    async status(intentId: string): Promise<StatusResult> {
+      const res  = await fetch(`${this.opts.gatewayUrl}/api/gateway/status/${intentId}`);
+      const json = await res.json() as Record<string, unknown>;
+      return {
+        settled:     (json['settled'] as boolean) ?? false,
+        intentId,
+        txSignature: json['txSignature'] as string | undefined,
+        slot:        json['slot']        as number | undefined,
+        settledAt:   json['settledAt']   as number | undefined,
       };
     }
 
-    // ─── Agent discovery ────────────────────────────────────────────────────────
-
-    async discover(agentId: string): Promise<AgentDescriptor> {
-      const entry = this.registry.get(agentId);
-      if (!entry) throw new Error(`Agent "${agentId}" not found in registry`);
-      return entry.descriptor;
-    }
-
-    async resolveOrDiscover(agent: AgentDescriptor | string): Promise<AgentDescriptor> {
-      if (typeof agent === 'string') return this.discover(agent);
-      return agent;
-    }
-
-    // ─── Call dispatch ───────────────────────────────────────────────────────────
-
-    async call<T = unknown>(
-      agent:          AgentDescriptor | string,
-      capabilityName: string,
-      payload:        Record<string, unknown> = {},
-      opts:           CallOptions = {},
-    ): Promise<AgentCallResult<T>> {
-      const descriptor = await this.resolveOrDiscover(agent);
-      const agentId    = descriptor.agentId;
-
-      let pool = this.pools.get(agentId);
-      if (!pool && !opts.forceDirect) {
-        const comparison = simulateComparison(
-          opts.maxPriceLamports ?? this.opts.maxPriceLamports,
-          10, // lookahead
-        );
-        const useChannels = comparison.recommendation === 'channel';
-        pool = await AgentPool.create(descriptor, {
-          size:            3,
-          useChannels,
-          payerKeypair:    this.opts.payerKeypair,
-          rpcEndpoint:     this.opts.rpcEndpoint,
-          maxPriceLamports: opts.maxPriceLamports ?? this.opts.maxPriceLamports,
-          timeoutMs:       this.opts.timeoutMs,
-        });
-        this.pools.set(agentId, pool);
+    /**
+     * waitForSettlement
+     *
+     * Polls status until settled or timeout (default 30s, 1s interval).
+     * Throws if timeout is reached without confirmation.
+     */
+    async waitForSettlement(intentId: string, timeoutMs = 30_000): Promise<StatusResult> {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const s = await this.status(intentId);
+        if (s.settled) return s;
+        await new Promise((r) => setTimeout(r, 1_000));
       }
-
-      const result = pool
-        ? await pool.call<T>(capabilityName, payload)
-        : await this.directCall<T>(descriptor, capabilityName, payload, opts);
-
-      // Record spend in session if attached
-      if (opts.sessionId && result.ok) {
-        const cap = descriptor.capabilities.find((c) => c.name === capabilityName);
-        if (cap) this.sessions.recordCall(opts.sessionId, cap.priceLamports);
-      }
-
-      return result;
-    }
-
-    private async directCall<T>(
-      agent:          AgentDescriptor,
-      capabilityName: string,
-      payload:        Record<string, unknown>,
-      opts:           CallOptions,
-    ): Promise<AgentCallResult<T>> {
-      const conn = await AgentConnection.connect(agent, {
-        payerKeypair:     this.opts.payerKeypair,
-        rpcEndpoint:      this.opts.rpcEndpoint,
-        maxPriceLamports: opts.maxPriceLamports ?? this.opts.maxPriceLamports,
-        timeoutMs:        this.opts.timeoutMs,
-      });
-      const result = await conn.call<T>(capabilityName, payload);
-      conn.close();
-      return result;
-    }
-
-    // ─── Sessions ────────────────────────────────────────────────────────────────
-
-    openSession(agent: AgentDescriptor, payerWallet: string, ttlSeconds?: number): AgentSession {
-      return this.sessions.create({ agent, payerWallet, ttlSeconds });
-    }
-
-    getSession(sessionId: string) { return this.sessions.get(sessionId); }
-    closeSession(sessionId: string) { return this.sessions.close(sessionId); }
-
-    // ─── Proof verification ──────────────────────────────────────────────────────
-
-    verifyProof(proof: PaymentProof, maxAgeMs?: number) {
-      if (!this.opts.gatewaySecret) throw new Error('gatewaySecret is required for proof verification');
-      return verifyPaymentProof(proof, { gatewaySecret: this.opts.gatewaySecret, maxAgeMs });
-    }
-
-    // ─── Fee estimation ──────────────────────────────────────────────────────────
-
-    estimateFees(pricePerCallLamports: bigint, calls: number): SimulateComparisonResult {
-      return simulateComparison(pricePerCallLamports, calls);
-    }
-
-    // ─── Token info ──────────────────────────────────────────────────────────────
-
-    get token() {
-      return { mint: AEERON_MINT, symbol: AEERON_SYMBOL } as const;
-    }
-
-    // ─── Lifecycle ───────────────────────────────────────────────────────────────
-
-    async destroy(): Promise<void> {
-      await Promise.all([...this.pools.values()].map((p) => p.drain()));
-      this.pools.clear();
+      throw new Error(`AeeronClient: settlement timeout for intentId ${intentId}`);
     }
   }
   

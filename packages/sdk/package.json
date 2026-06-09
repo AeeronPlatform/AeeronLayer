@@ -1,44 +1,29 @@
 {
-  "name": "@aeeron/sdk",
-  "version": "0.1.0",
-  "description": "TypeScript SDK for the Aeeron x402 non-custodial payment protocol on Solana",
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+    "name": "@aeeron/sdk",
+    "version": "0.2.0",
+    "description": "TypeScript SDK for agent-to-agent x402 payments on Aeeron",
+    "main":    "./dist/index.js",
+    "module":  "./dist/index.mjs",
+    "types":   "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types":   "./dist/index.d.ts",
+        "import":  "./dist/index.mjs",
+        "require": "./dist/index.js"
+      }
     },
-    "./server": {
-      "import": "./dist/server.mjs",
-      "require": "./dist/server.js",
-      "types": "./dist/server.d.ts"
-    }
-  },
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "lint": "eslint src --ext .ts"
-  },
-  "dependencies": {
-    "@solana/web3.js": "^1.95.3",
-    "@coral-xyz/anchor": "^0.30.1",
-    "bs58": "^6.0.0",
-    "tweetnacl": "^1.0.3",
-    "zod": "^3.23.8"
-  },
-  "devDependencies": {
-    "@types/node": "^22.7.5",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.2",
-    "vitest": "^2.1.2"
-  },
-  "peerDependencies": {
-    "@solana/web3.js": "^1.x"
+    "files": ["dist", "README.md"],
+    "scripts": {
+      "build":     "tsup src/index.ts --format cjs,esm --dts --clean",
+      "typecheck": "tsc -p tsconfig.json --noEmit"
+    },
+    "dependencies": {
+      "@aeeron/protocol": "workspace:*"
+    },
+    "devDependencies": {
+      "tsup":       "catalog:",
+      "typescript": "catalog:"
+    },
+    "publishConfig": { "access": "public" }
   }
-}
+  
